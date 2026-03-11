@@ -1,231 +1,278 @@
-
-
 #!/bin/bash
-# =========================================================
-# PX4 + Gazebo + ROS2 无人机仿真环境自动化启动脚本
-# 严格启动顺序：Gazebo → PX4 → ROS-GZ Bridge → MicroXRCEAgent → QGC
-# 使用 gnome-terminal 在不同标签页启动
-# =========================================================
+# ============================================================
+# PX4 + Gazebo + ROS2 + QGroundControl 一键仿真启动脚本
+#
+# Author: UAV Dev Lab
+# Description:
+#   工业级仿真启动脚本
+#
+# 启动顺序:
+#   1 PX4 SITL
+#   2 MicroXRCEAgent
+#   3 QGroundControl
+#
+# 特性:
+#   自动下载 QGC
+#   自动初始化 Gazebo worlds
+#   自动依赖检查
+#   日志管理
+# ============================================================
 
-set -e  # 遇到错误时退出
+set -e
 
-# === 配置路径（根据你的环境调整） ===
-GZ_WORLD_PATH="$HOME/.simulation-gazebo/worlds"
+# ============================================================
+# 基本配置
+# ============================================================
+
 PX4_PATH="$HOME/PX4-Autopilot"
-PYTHON_ENV_PATH="$HOME/myenv/bin/activate"
-QGC_PATH="$HOME/bin/QGroundControl-x86_64.AppImage"
-ROS_DISTRO= $ROS_DISTRO   # 或 humble, iron, jazzy
+QGC_PATH="$HOME/bin/QGroundControl.AppImage"
 
-# 仿真参数
-WORLD_NAME="default"
+GZ_WORLD_PATH="$HOME/.simulation-gazebo/worlds/worlds"
+GZ_SIM_SCRIPT="$PX4_PATH/Tools/simulation/gz/simulation-gazebo"
+
 PX4_MODEL="gz_x500"
+WORLD_NAME="default"
 
-# =========================================================
-#  Gazebo worlds 自动初始化
-# =========================================================
-init_gazebo_worlds() {
-    if [[ ! -d "$GZ_WORLD_PATH" ]]; then
-        echo -e "${YELLOW}⚠️ 未发现 Gazebo worlds: $GZ_WORLD_PATH${NC}"
-        echo -e "${BLUE}➡️ 初始化 simulation-gazebo 资源...${NC}"
+LOG_DIR="$HOME/.px4_sim_logs"
+mkdir -p "$LOG_DIR"
 
-        [[ -d "$GZ_SIM_PATH" ]] || {
-            echo -e "${RED}❌ 找不到 simulation/gz 路径: $GZ_SIM_PATH${NC}"
-            exit 1
-        }
+# ============================================================
+# 颜色输出
+# ============================================================
 
-        # mkdir -p "$HOME/.simulation-gazebo"
-
-        (
-            cd "$GZ_SIM_PATH"
-            echo -e "${BLUE}运行: python3 simulation-gazebo${NC}"
-            python3 simulation-gazebo
-        )
-
-        if [[ ! -d "$GZ_WORLD_PATH" ]]; then
-            echo -e "${RED}❌ Gazebo worlds 初始化失败${NC}"
-            exit 1
-        fi
-
-        echo -e "${GREEN}✅ Gazebo worlds 初始化完成${NC}"
-    else
-        echo -e "${GREEN}✅ Gazebo worlds 已存在${NC}"
-    fi
-}
-
-# =========================================================
-#  QGroundControl 自动下载
-# =========================================================
-init_qgroundcontrol() {
-    if [[ ! -f "$QGC_PATH" ]]; then
-        echo -e "${YELLOW}⚠️ 未发现 QGroundControl${NC}"
-        echo -e "${BLUE}➡️ 下载 QGroundControl AppImage...${NC}"
-
-        mkdir -p "$HOME/bin"
-
-        wget -O "$QGC_PATH" "$QGC_URL" || {
-            echo -e "${RED}❌ QGroundControl 下载失败${NC}"
-            exit 1
-        }
-
-        chmod +x "$QGC_PATH"
-
-        echo -e "${BLUE}➡️ 安装 QGroundControl 运行依赖（需要 sudo）...${NC}"
-
-        sudo apt update
-        sudo apt install -y \
-            gstreamer1.0-plugins-bad \
-            gstreamer1.0-libav \
-            gstreamer1.0-gl \
-            libfuse2 \
-            libxcb-xinerama0 \
-            libxkbcommon-x11-0 \
-            libxcb-cursor-dev || {
-                echo -e "${RED}❌ QGroundControl 依赖安装失败${NC}"
-                exit 1
-            }
-
-        echo -e "${GREEN}✅ QGroundControl 下载并初始化完成${NC}"
-    else
-        echo -e "${GREEN}✅ QGroundControl 已存在，跳过下载和依赖安装${NC}"
-    fi
-}
-
-# === 依赖检查 ===
-echo "🔍 检查依赖..."
-command -v gnome-terminal >/dev/null 2>&1 || { echo "错误: 需要安装 gnome-terminal"; exit 1; }
-command -v ros2 >/dev/null 2>&1 || { echo "错误: 需要安装 ROS2"; exit 1; }
-[[ -d "$PX4_PATH" ]] || { echo "错误: PX4 路径不存在: $PX4_PATH"; exit 1; }
-[[ -d "$GZ_WORLD_PATH" ]] || { echo "错误: Gazebo 路径不存在: $GZ_WORLD_PATH"; exit 1; }
-
-# Source ROS2
-source /opt/ros/$ROS_DISTRO/setup.bash
-
-# === 颜色输出 ===
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# === 启动函数 ===
-start_gazebo() {
-    echo -e "${YELLOW}=== 1️⃣ 启动 Gazebo 仿真 ===${NC}"
-    gnome-terminal --tab --title="🗺️ Gazebo ($WORLD_NAME)" -- bash -c "
-        cd '$GZ_WORLD_PATH';
-        echo '🚀 启动 Gazebo 世界: $WORLD_NAME';
-        echo '等待 Gazebo 完全启动...';
-        python3 simulation-gazebo --world $WORLD_NAME;
-        echo 'Gazebo 已停止，按 Enter 关闭窗口...';
-        read;
-    " &
-    GZ_PID=$!
-    echo -e "${GREEN}Gazebo 启动中 (PID: $GZ_PID)${NC}"
-    
-    # 等待 Gazebo 启动
-    echo -e "${BLUE}等待 Gazebo 启动完成 (10秒)...${NC}"
-    sleep 10
+# ============================================================
+# 打印函数
+# ============================================================
+
+log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_ok() { echo -e "${GREEN}[OK]${NC} $1"; }
+
+# ============================================================
+# 依赖检查
+# ============================================================
+
+check_dependencies() {
+
+log_info "检查系统依赖..."
+
+command -v ros2 >/dev/null || { log_error "ROS2 未安装"; exit 1; }
+command -v gnome-terminal >/dev/null || { log_error "gnome-terminal 未安装"; exit 1; }
+command -v wget >/dev/null || { log_error "wget 未安装"; exit 1; }
+
+[[ -d "$PX4_PATH" ]] || { log_error "PX4 路径不存在: $PX4_PATH"; exit 1; }
+
+log_ok "依赖检查通过"
+
 }
+
+# ============================================================
+# 初始化 Gazebo worlds
+# ============================================================
+
+init_gazebo_worlds() {
+
+if [[ ! -d "$GZ_WORLD_PATH" ]]; then
+
+log_warn "未发现 Gazebo worlds"
+
+mkdir -p "$GZ_WORLD_PATH"
+
+log_info "初始化 Gazebo worlds..."
+
+(
+cd "$(dirname "$GZ_SIM_SCRIPT")"
+python3 "$GZ_SIM_SCRIPT"
+)
+
+if [[ ! -f "$GZ_WORLD_PATH/$WORLD_NAME.sdf" ]]; then
+log_error "world 文件生成失败"
+exit 1
+fi
+
+log_ok "Gazebo worlds 初始化完成"
+
+else
+
+log_ok "Gazebo worlds 已存在"
+
+fi
+
+}
+
+# ============================================================
+# 初始化 QGroundControl
+# ============================================================
+
+init_qgc() {
+
+if [[ ! -f "$QGC_PATH" ]]; then
+
+log_warn "未检测到 QGroundControl"
+
+mkdir -p "$HOME/bin"
+
+QGC_URL="https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-x86_64.AppImage"
+
+log_info "下载 QGroundControl..."
+
+wget -O "$QGC_PATH" "$QGC_URL"
+
+chmod +x "$QGC_PATH"
+
+log_info "安装 QGC 依赖..."
+
+sudo usermod -a -G dialout $USER
+sudo apt-get remove modemmanager -y
+sudo apt update
+sudo apt install -y \
+gstreamer1.0-plugins-bad \
+gstreamer1.0-libav \
+gstreamer1.0-gl \
+libfuse2 \
+libxcb-xinerama0 \
+libxkbcommon-x11-0
+
+log_ok "QGroundControl 初始化完成"
+
+else
+
+log_ok "QGroundControl 已安装"
+
+fi
+
+}
+
+# ============================================================
+# 启动 PX4 SITL
+# ============================================================
 
 start_px4() {
-    echo -e "${YELLOW}=== 2️⃣ 启动 PX4 SITL ===${NC}"
-    gnome-terminal --tab --title="🛫 PX4 SITL ($PX4_MODEL)" -- bash -c "
-        cd '$PX4_PATH';
-        echo '🛫 启动 PX4 SITL: $PX4_MODEL';
-        echo '确保 Gazebo 已运行...';
-        export PX4_SIM_MODEL=$PX4_MODEL;
-        make px4_sitl $PX4_MODEL;
-        echo 'PX4 已停止，按 Enter 关闭窗口...';
-        read;
-    " &
-    PX4_PID=$!
-    echo -e "${GREEN}PX4 启动中 (PID: $PX4_PID)${NC}"
-    
-    # 等待 PX4 连接 Gazebo
-    echo -e "${BLUE}等待 PX4 连接 Gazebo (15秒)...${NC}"
-    sleep 15
+
+log_info "启动 PX4 SITL..."
+
+gnome-terminal --tab --title="PX4 SITL" -- bash -c "
+
+cd $PX4_PATH
+
+export PX4_SIM_MODEL=$PX4_MODEL
+
+echo 'PX4 SITL 启动中...'
+
+make px4_sitl $PX4_MODEL
+
+read
+"
+
+sleep 15
+
+log_ok "PX4 启动完成"
+
 }
 
+# ============================================================
+# 启动 MicroXRCEAgent
+# ============================================================
 
-start_micro_agent() {
-    echo -e "${YELLOW}=== 4️⃣ 启动 MicroXRCEAgent ===${NC}"
-    gnome-terminal --tab --title="📡 MicroXRCEAgent" -- bash -c "
-        cd '$PX4_PATH';
-        echo '📡 启动 MicroXRCEAgent (UDP port 8888)';
-        echo '等待 PX4 客户端连接...';
-        MicroXRCEAgent udp4 -p 8888;
-        echo 'Agent 已停止，按 Enter 关闭窗口...';
-        read;
-    " &
-    AGENT_PID=$!
-    echo -e "${GREEN}MicroXRCEAgent 启动中 (PID: $AGENT_PID)${NC}"
-    sleep 5
+start_agent() {
+
+log_info "启动 MicroXRCEAgent..."
+
+gnome-terminal --tab --title="MicroXRCEAgent" -- bash -c "
+
+echo '等待 PX4 连接...'
+
+MicroXRCEAgent udp4 -p 8888
+
+read
+"
+
+sleep 5
+
+log_ok "MicroXRCEAgent 启动完成"
+
 }
 
-start_qgroundcontrol() {
-    if [[ -f "$QGC_PATH" ]]; then
-        echo -e "${YELLOW}=== 5️⃣ 启动 QGroundControl ===${NC}"
-        gnome-terminal --tab --title="🛰️ QGroundControl" -- bash -c "
-            echo '🛰️ 启动 QGroundControl 地面站';
-            echo '连接到 PX4 SITL (UDP 14550)...';
-            '$QGC_PATH';
-            echo 'QGC 已关闭';
-        " &
-        QGC_PID=$!
-        echo -e "${GREEN}QGroundControl 启动中 (PID: $QGC_PID)${NC}"
-    else
-        echo -e "${RED}⚠️ QGroundControl 未找到: $QGC_PATH${NC}"
-        echo -e "${YELLOW}请手动启动: $QGC_PATH${NC}"
-    fi
-    sleep 2
+# ============================================================
+# 启动 QGroundControl
+# ============================================================
+
+start_qgc() {
+
+log_info "启动 QGroundControl..."
+
+gnome-terminal --tab --title="QGroundControl" -- bash -c "
+
+$QGC_PATH
+
+"
+
+log_ok "QGroundControl 已启动"
+
 }
 
+# ============================================================
+# 清理函数
+# ============================================================
 
-
-# === 清理函数 ===
 cleanup() {
-    echo -e "\n${RED}=== 停止仿真环境 ===${NC}"
-    echo "终止进程: GZ($GZ_PID), PX4($PX4_PID), Bridge($BRIDGE_PID), Agent($AGENT_PID)"
-    kill $GZ_PID $PX4_PID $BRIDGE_PID $AGENT_PID $QGC_PID $ENV_PID 2>/dev/null || true
-    pkill -f "QGroundControl\|MicroXRCEAgent\|ros_gz_bridge\|simulation-gazebo" 2>/dev/null || true
-    echo -e "${GREEN}清理完成${NC}"
-    exit 0
+
+log_warn "停止仿真环境..."
+
+pkill -f px4 || true
+pkill -f MicroXRCEAgent || true
+pkill -f QGroundControl || true
+
+log_ok "环境已关闭"
+
+exit 0
+
 }
 
-# 捕获 Ctrl+C
 trap cleanup SIGINT SIGTERM
 
-# === 主启动流程 ===
-echo -e "${GREEN}🚁 PX4 + Gazebo + ROS2 仿真环境启动${NC}"
-echo -e "${BLUE}ROS 版本: $ROS_DISTRO | 世界: $WORLD_NAME | 模型: $PX4_MODEL${NC}"
-echo "================================================================"
+# ============================================================
+# 主函数
+# ============================================================
 
-# 1. 启动 Gazebo
-start_gazebo
+main() {
 
-# 2. 启动 PX4
+echo
+echo "=========================================="
+echo " PX4 + Gazebo + ROS2 仿真启动器"
+echo "=========================================="
+echo
+
+check_dependencies
+
+init_gazebo_worlds
+
+init_qgc
+
 start_px4
 
+start_agent
 
-# 3. 启动 MicroXRCEAgent
-start_micro_agent
+start_qgc
 
-# 5. 启动 QGroundControl
-start_qgroundcontrol
+log_ok "仿真环境已全部启动"
 
-
-# === 验证和提示 ===
-echo -e "\n${GREEN}✅ 所有组件启动完成！${NC}"
-echo -e "${YELLOW}=== 验证检查 ===${NC}"
-echo "1. 检查 ROS2 话题:"
-echo "   ros2 topic list | grep -E '(rgb|depth|camera|fmu)'"
-echo "2. 检查 PX4 连接:"
+echo
+echo "连接检查:"
+echo "QGC: UDP 14550"
+echo "ROS2 topic:"
 echo "   ros2 topic list | grep fmu"
-echo "3. QGC 连接: UDP 14550 (默认)"
-echo "4. Python 环境: 运行你的 VO/VIO 节点"
+echo
 
-echo -e "\n${RED}停止脚本: Ctrl+C 或关闭所有终端${NC}"
-echo -e "${YELLOW}日志查看: ~/.ros/log/ 最新的日志文件${NC}"
-
-# 保持脚本运行，监控进程
-echo -e "\n${BLUE}监控进程状态 (按 Ctrl+C 停止)...${NC}"
 wait
+
+}
+
+main
