@@ -6,15 +6,17 @@ echo " ROS2 + PX4 + Gazebo 一键开发环境安装脚本 (稳定版)"
 echo "================================================="
 
 # ------------------------------------------------
-# 检测 sudo
+# 检测不要 sudo 运行
 # ------------------------------------------------
-if [[ $EUID -ne 0 ]]; then
-    echo "❌ 请使用 sudo 运行"
+if [[ $EUID -eq 0 ]]; then
+    echo "❌ 请不要使用 sudo 运行脚本"
+    echo "正确方式:"
+    echo "./install_px4_ros2.sh"
     exit 1
 fi
 
-REAL_USER=${SUDO_USER:-$USER}
-USER_HOME=$(eval echo "~$REAL_USER")
+USER_HOME="$HOME"
+REAL_USER="$USER"
 
 echo "✔ 当前用户: $REAL_USER"
 echo "✔ 用户目录: $USER_HOME"
@@ -43,11 +45,26 @@ echo "✔ ROS2发行版: $ROS_DISTRO"
 # ------------------------------------------------
 echo ">>> 配置 locale"
 
-apt update
-apt install -y locales
+sudo apt update
+sudo apt install -y locales
 
-locale-gen en_US en_US.UTF-8
-update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+sudo locale-gen en_US en_US.UTF-8
+sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+
+# ------------------------------------------------
+# 基础工具
+# ------------------------------------------------
+echo ">>> 安装开发工具"
+
+sudo apt install -y \
+git \
+wget \
+curl \
+build-essential \
+cmake \
+ninja-build \
+python3-colcon-common-extensions \
+python3-pip
 
 # ------------------------------------------------
 # ROS2 安装检测
@@ -57,8 +74,8 @@ if [[ -d "/opt/ros/$ROS_DISTRO" ]]; then
 else
     echo ">>> 安装 ROS2"
 
-    apt install -y software-properties-common curl
-    add-apt-repository universe -y
+    sudo apt install -y software-properties-common
+    sudo add-apt-repository universe -y
 
     ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest \
         | grep -F "tag_name" | awk -F\" '{print $4}')
@@ -66,12 +83,12 @@ else
     curl -L -o /tmp/ros2-apt-source.deb \
         "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.${UBUNTU_CODENAME}_all.deb"
 
-    dpkg -i /tmp/ros2-apt-source.deb
+    sudo dpkg -i /tmp/ros2-apt-source.deb
 
-    apt update
-    apt upgrade -y
+    sudo apt update
+    sudo apt upgrade -y
 
-    apt install -y ros-${ROS_DISTRO}-desktop
+    sudo apt install -y ros-${ROS_DISTRO}-desktop
 
     echo "✔ ROS2 安装完成"
 fi
@@ -79,24 +96,10 @@ fi
 # ------------------------------------------------
 # ROS2 bashrc
 # ------------------------------------------------
-if ! sudo -u "$REAL_USER" grep -q "/opt/ros/$ROS_DISTRO/setup.bash" "$USER_HOME/.bashrc"; then
+if ! grep -q "/opt/ros/$ROS_DISTRO/setup.bash" ~/.bashrc; then
     echo ">>> 写入 ROS2 bashrc"
-    sudo -u "$REAL_USER" bash -c "echo 'source /opt/ros/$ROS_DISTRO/setup.bash' >> ~/.bashrc"
+    echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc
 fi
-
-# ------------------------------------------------
-# 基础工具
-# ------------------------------------------------
-echo ">>> 安装开发工具"
-
-apt install -y \
-git \
-wget \
-curl \
-build-essential \
-cmake \
-python3-colcon-common-extensions \
-python3-pip
 
 # ------------------------------------------------
 # PX4
@@ -106,14 +109,15 @@ PX4_DIR="$USER_HOME/PX4-Autopilot"
 echo ">>> 安装 PX4"
 
 if [[ ! -d "$PX4_DIR" ]]; then
-    sudo -u "$REAL_USER" git clone https://github.com/PX4/PX4-Autopilot.git --recursive "$PX4_DIR"
+    git clone https://github.com/PX4/PX4-Autopilot.git --recursive "$PX4_DIR"
 else
     echo "✔ PX4 已存在"
 fi
 
 echo ">>> 安装 PX4 依赖"
 
-bash "$PX4_DIR/Tools/setup/ubuntu.sh"
+cd "$PX4_DIR"
+bash Tools/setup/ubuntu.sh
 
 # ------------------------------------------------
 # XRCE DDS Agent
@@ -123,21 +127,19 @@ DDS_DIR="$USER_HOME/Micro-XRCE-DDS-Agent"
 echo ">>> 安装 Micro XRCE DDS Agent"
 
 if [[ ! -d "$DDS_DIR" ]]; then
-    sudo -u "$REAL_USER" git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git "$DDS_DIR"
+    git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git "$DDS_DIR"
 fi
 
 cd "$DDS_DIR"
 
-if [[ ! -d build ]]; then
-    sudo -u "$REAL_USER" mkdir build
-fi
-
+mkdir -p build
 cd build
 
 cmake ..
 make -j$(nproc)
-make install
-ldconfig
+
+sudo make install
+sudo ldconfig
 
 echo "✔ XRCE DDS Agent 安装完成"
 
@@ -148,29 +150,29 @@ WS_DIR="$USER_HOME/ros2_px4"
 
 echo ">>> 构建 ROS2 PX4 工作空间"
 
-sudo -u "$REAL_USER" mkdir -p "$WS_DIR/src"
+mkdir -p "$WS_DIR/src"
 
 cd "$WS_DIR/src"
 
 if [[ ! -d px4_msgs ]]; then
-    sudo -u "$REAL_USER" git clone https://github.com/PX4/px4_msgs.git
+    git clone https://github.com/PX4/px4_msgs.git
 fi
 
 if [[ ! -d px4_ros_com ]]; then
-    sudo -u "$REAL_USER" git clone https://github.com/PX4/px4_ros_com.git
+    git clone https://github.com/PX4/px4_ros_com.git
 fi
 
 cd "$WS_DIR"
 
 source /opt/ros/$ROS_DISTRO/setup.bash
 
-sudo -u "$REAL_USER" colcon build
+colcon build
 
 # ------------------------------------------------
 # workspace bashrc
 # ------------------------------------------------
-if ! sudo -u "$REAL_USER" grep -q "ros2_px4/install/setup.bash" "$USER_HOME/.bashrc"; then
-    sudo -u "$REAL_USER" bash -c "echo 'source ~/ros2_px4/install/setup.bash' >> ~/.bashrc"
+if ! grep -q "ros2_px4/install/setup.bash" ~/.bashrc; then
+    echo "source ~/ros2_px4/install/setup.bash" >> ~/.bashrc
 fi
 
 # ------------------------------------------------
