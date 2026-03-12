@@ -1,18 +1,18 @@
-'''
-================================================================================
-作者/Author: 刘永学/Liu Yongxue
-邮箱/Email: 805110687@qq.com
-QQ群：1080856708
-wechat：LingZhiLab
+# '''
+# ================================================================================
+# 作者/Author: 刘永学/Liu Yongxue
+# 邮箱/Email: 805110687@qq.com
+# QQ群：1080856708
+# wechat：LingZhiLab
 
-版权声明/Copyright Notice:
-© All rights reserved. 保留所有权利。
+# 版权声明/Copyright Notice:
+# © All rights reserved. 保留所有权利。
 
-使用许可/Usage License:
-仅供个人使用，禁止商业用途。
-For personal use only. Commercial use is prohibited.
-================================================================================
-'''
+# 使用许可/Usage License:
+# 仅供个人使用，禁止商业用途。
+# For personal use only. Commercial use is prohibited.
+# ================================================================================
+# '''
 
 #!/usr/bin/env bash
 set -e
