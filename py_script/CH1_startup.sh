@@ -42,7 +42,7 @@ set -e
 PX4_PATH="$HOME/PX4-Autopilot"
 QGC_PATH="$HOME/bin/QGroundControl.AppImage"
 
-GZ_WORLD_PATH="$HOME/.simulation-gazebo/worlds/worlds"
+GZ_WORLD_PATH="$HOME/.simulation-gazebo/worlds/"
 GZ_SIM_SCRIPT="$PX4_PATH/Tools/simulation/gz/simulation-gazebo"
 
 PX4_MODEL="gz_x500"
@@ -98,7 +98,7 @@ if [[ ! -d "$GZ_WORLD_PATH" ]]; then
 
 log_warn "未发现 Gazebo worlds"
 
-mkdir -p "$GZ_WORLD_PATH"
+#mkdir -p "$GZ_WORLD_PATH"
 
 log_info "初始化 Gazebo worlds..."
 
@@ -186,7 +186,7 @@ make px4_sitl $PX4_MODEL
 read
 "
 
-sleep 15
+sleep 5
 
 log_ok "PX4 启动完成"
 
