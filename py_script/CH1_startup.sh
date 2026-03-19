@@ -78,6 +78,7 @@ check_dependencies() {
 
 log_info "检查系统依赖..."
 
+source ~/.bashrc
 command -v ros2 >/dev/null || { log_error "ROS2 未安装"; exit 1; }
 command -v gnome-terminal >/dev/null || { log_error "gnome-terminal 未安装"; exit 1; }
 command -v wget >/dev/null || { log_error "wget 未安装"; exit 1; }
