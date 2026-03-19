@@ -80,7 +80,6 @@ curl \
 build-essential \
 cmake \
 ninja-build \
-python3-colcon-common-extensions \
 python3-pip
 
 # ------------------------------------------------
